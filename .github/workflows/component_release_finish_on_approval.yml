@@ -1,0 +1,139 @@
+name: Component Release Finish On Approval
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-finish-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: false
+
+jobs:
+  finish-release:
+    name: Finish release when both PRs approved
+    if: ${{ github.event.review.state == 'approved' && startsWith(github.event.pull_request.head.ref, 'release/') }}
+    runs-on: ubuntu-latest
+    env:
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+      RELEASE_BRANCH: ${{ github.event.pull_request.head.ref }}
+
+    steps:
+      - name: Validate required secret
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "RELEASE_AUTOMATION_TOKEN is required."
+            exit 1
+          fi
+
+      - name: Ensure branch is main or develop PR
+        run: |
+          set -euo pipefail
+          base_ref="${{ github.event.pull_request.base.ref }}"
+          if [ "${base_ref}" != "main" ] && [ "${base_ref}" != "develop" ]; then
+            echo "PR base is ${base_ref}; only main/develop release PR approvals trigger finish."
+            exit 0
+          fi
+
+      - name: Resolve both release PRs and approval status
+        id: approvals
+        run: |
+          set -euo pipefail
+          main_pr_number=$(gh pr list --head "${RELEASE_BRANCH}" --base main --state open --json number -q '.[0].number')
+          develop_pr_number=$(gh pr list --head "${RELEASE_BRANCH}" --base develop --state open --json number -q '.[0].number')
+
+          if [ -z "${main_pr_number}" ] || [ -z "${develop_pr_number}" ]; then
+            echo "Both release PRs are not open yet. Waiting."
+            echo "should_finish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          main_decision=$(gh pr view "${main_pr_number}" --json reviewDecision -q '.reviewDecision')
+          develop_decision=$(gh pr view "${develop_pr_number}" --json reviewDecision -q '.reviewDecision')
+
+          echo "Main PR #${main_pr_number} decision: ${main_decision}"
+          echo "Develop PR #${develop_pr_number} decision: ${develop_decision}"
+
+          if [ "${main_decision}" = "APPROVED" ] && [ "${develop_decision}" = "APPROVED" ]; then
+            echo "should_finish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Both PRs are not approved yet. Waiting."
+            echo "should_finish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: steps.approvals.outputs.should_finish == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_AUTOMATION_TOKEN }}
+
+      - name: Install release tools
+        if: steps.approvals.outputs.should_finish == 'true'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y git-flow
+
+      - name: Configure git identity
+        if: steps.approvals.outputs.should_finish == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "release-bot"
+          git config user.email "release-bot@users.noreply.github.com"
+
+      - name: Finish release and push
+        if: steps.approvals.outputs.should_finish == 'true'
+        run: |
+          set -euo pipefail
+          release_version="${RELEASE_BRANCH#release/}"
+
+          git fetch --prune origin
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${release_version}" >/dev/null 2>&1; then
+            echo "Tag ${release_version} already exists on origin. Skipping release finish."
+            exit 0
+          fi
+
+          if git show-ref --verify --quiet "refs/heads/${RELEASE_BRANCH}"; then
+            git checkout "${RELEASE_BRANCH}"
+          elif git ls-remote --exit-code --heads origin "${RELEASE_BRANCH}" >/dev/null 2>&1; then
+            git checkout -b "${RELEASE_BRANCH}" "origin/${RELEASE_BRANCH}"
+          else
+            echo "${RELEASE_BRANCH} does not exist locally or on origin."
+            exit 1
+          fi
+
+          if [ -z "$(git config --get gitflow.branch.master || true)" ] || [ -z "$(git config --get gitflow.branch.develop || true)" ]; then
+            printf '%s\n' \
+              'main' \
+              'develop' \
+              'feature/' \
+              'bugfix/' \
+              'release/' \
+              'hotfix/' \
+              'support/' \
+              '' \
+              '.git/hooks' | git flow init -f
+          fi
+
+          git flow release finish -m "Release ${release_version}" "${release_version}"
+          git push origin main
+          git push origin --tags
+          git push origin develop
+
+      - name: Workflow summary
+        if: always()
+        run: |
+          {
+            echo "## Release Finish On Approval"
+            echo "- Repository: ${REPO}"
+            echo "- Release branch: ${RELEASE_BRANCH}"
+            echo "- Triggered by review: ${{ github.event.review.state }}"
+            echo "- Finished release: ${{ steps.approvals.outputs.should_finish || 'false' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
