@@ -87,15 +87,19 @@ jobs:
           git fetch --prune origin
           git checkout develop
           git reset --hard origin/develop
-          git config gitflow.branch.master main
-          git config gitflow.branch.develop develop
-          git config gitflow.prefix.feature feature/
-          git config gitflow.prefix.bugfix bugfix/
-          git config gitflow.prefix.release release/
-          git config gitflow.prefix.hotfix hotfix/
-          git config gitflow.prefix.support support/
-          git config gitflow.prefix.versiontag ""
-          git config gitflow.path.hooks .git/hooks
+
+          if [ -z "$(git config --get gitflow.branch.master || true)" ] || [ -z "$(git config --get gitflow.branch.develop || true)" ]; then
+            printf '%s\n' \
+              'main' \
+              'develop' \
+              'feature/' \
+              'bugfix/' \
+              'release/' \
+              'hotfix/' \
+              'support/' \
+              '' \
+              '.git/hooks' | git flow init -f
+          fi
 
           release_branch="release/${RELEASE_VERSION}"
           if git show-ref --verify --quiet "refs/heads/${release_branch}" || git ls-remote --exit-code --heads origin "${release_branch}" >/dev/null 2>&1; then
@@ -204,15 +208,19 @@ jobs:
           git fetch --prune origin
           git checkout main
           git reset --hard origin/main
-          git config gitflow.branch.master main
-          git config gitflow.branch.develop develop
-          git config gitflow.prefix.feature feature/
-          git config gitflow.prefix.bugfix bugfix/
-          git config gitflow.prefix.release release/
-          git config gitflow.prefix.hotfix hotfix/
-          git config gitflow.prefix.support support/
-          git config gitflow.prefix.versiontag ""
-          git config gitflow.path.hooks .git/hooks
+
+          if [ -z "$(git config --get gitflow.branch.master || true)" ] || [ -z "$(git config --get gitflow.branch.develop || true)" ]; then
+            printf '%s\n' \
+              'main' \
+              'develop' \
+              'feature/' \
+              'bugfix/' \
+              'release/' \
+              'hotfix/' \
+              'support/' \
+              '' \
+              '.git/hooks' | git flow init -f
+          fi
 
           hotfix_branch="hotfix/${RELEASE_VERSION}"
           if git show-ref --verify --quiet "refs/heads/${hotfix_branch}" || git ls-remote --exit-code --heads origin "${hotfix_branch}" >/dev/null 2>&1; then
