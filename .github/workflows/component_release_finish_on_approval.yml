@@ -44,8 +44,8 @@ jobs:
         id: approvals
         run: |
           set -euo pipefail
-          main_pr_number=$(gh pr list --head "${RELEASE_BRANCH}" --base main --state open --json number -q '.[0].number')
-          develop_pr_number=$(gh pr list --head "${RELEASE_BRANCH}" --base develop --state open --json number -q '.[0].number')
+          main_pr_number=$(gh pr list --repo "${REPO}" --head "${RELEASE_BRANCH}" --base main --state open --json number -q '.[0].number')
+          develop_pr_number=$(gh pr list --repo "${REPO}" --head "${RELEASE_BRANCH}" --base develop --state open --json number -q '.[0].number')
 
           if [ -z "${main_pr_number}" ] || [ -z "${develop_pr_number}" ]; then
             echo "Both release PRs are not open yet. Waiting."
@@ -53,8 +53,8 @@ jobs:
             exit 0
           fi
 
-          main_decision=$(gh pr view "${main_pr_number}" --json reviewDecision -q '.reviewDecision')
-          develop_decision=$(gh pr view "${develop_pr_number}" --json reviewDecision -q '.reviewDecision')
+          main_decision=$(gh pr view --repo "${REPO}" "${main_pr_number}" --json reviewDecision -q '.reviewDecision')
+          develop_decision=$(gh pr view --repo "${REPO}" "${develop_pr_number}" --json reviewDecision -q '.reviewDecision')
 
           echo "Main PR #${main_pr_number} decision: ${main_decision}"
           echo "Develop PR #${develop_pr_number} decision: ${develop_decision}"
