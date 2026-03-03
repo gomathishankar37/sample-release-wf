@@ -87,18 +87,32 @@ jobs:
           git fetch --prune origin
           git checkout develop
           git reset --hard origin/develop
-          printf 'main\ndevelop\n\n\n\n\n\n\n' | git flow init -f
-          git flow release start "${RELEASE_VERSION}"
+          git config gitflow.branch.master main
+          git config gitflow.branch.develop develop
+          git config gitflow.prefix.feature feature/
+          git config gitflow.prefix.bugfix bugfix/
+          git config gitflow.prefix.release release/
+          git config gitflow.prefix.hotfix hotfix/
+          git config gitflow.prefix.support support/
+          git config gitflow.prefix.versiontag ""
+          git config gitflow.path.hooks .git/hooks
 
-          auto-changelog -v "${RELEASE_VERSION}"
-          git add CHANGELOG.md
-          if ! git diff --cached --quiet; then
-            git commit -m "${RELEASE_VERSION} release changelog updates"
+          release_branch="release/${RELEASE_VERSION}"
+          if git show-ref --verify --quiet "refs/heads/${release_branch}" || git ls-remote --exit-code --heads origin "${release_branch}" >/dev/null 2>&1; then
+            echo "${release_branch} already exists. Skipping release start/publish."
           else
-            echo "No CHANGELOG.md updates to commit."
-          fi
+            git flow release start "${RELEASE_VERSION}"
 
-          git flow release publish "${RELEASE_VERSION}"
+            auto-changelog -v "${RELEASE_VERSION}"
+            git add CHANGELOG.md
+            if ! git diff --cached --quiet; then
+              git commit -m "${RELEASE_VERSION} release changelog updates"
+            else
+              echo "No CHANGELOG.md updates to commit."
+            fi
+
+            git flow release publish "${RELEASE_VERSION}"
+          fi
 
       - name: Create release pull requests
         if: ${{ github.event.inputs.hotfix == 'false' }}
@@ -157,7 +171,27 @@ jobs:
         if: ${{ github.event.inputs.hotfix == 'false' }}
         run: |
           set -euo pipefail
-          git checkout "release/${RELEASE_VERSION}"
+          release_branch="release/${RELEASE_VERSION}"
+
+          if git rev-parse -q --verify "refs/tags/${RELEASE_VERSION}" >/dev/null; then
+            echo "Tag ${RELEASE_VERSION} already exists locally. Skipping release finish."
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_VERSION}" >/dev/null 2>&1; then
+            echo "Tag ${RELEASE_VERSION} already exists on origin. Skipping release finish."
+            exit 0
+          fi
+
+          if git show-ref --verify --quiet "refs/heads/${release_branch}"; then
+            git checkout "${release_branch}"
+          elif git ls-remote --exit-code --heads origin "${release_branch}" >/dev/null 2>&1; then
+            git checkout -b "${release_branch}" "origin/${release_branch}"
+          else
+            echo "${release_branch} does not exist locally or on origin."
+            exit 1
+          fi
+
           git flow release finish -m "Release ${RELEASE_VERSION}" "${RELEASE_VERSION}"
           git push origin main
           git push origin --tags
@@ -170,15 +204,48 @@ jobs:
           git fetch --prune origin
           git checkout main
           git reset --hard origin/main
-          printf 'main\ndevelop\n\n\n\n\n\n\n' | git flow init -f
-          git flow hotfix start "${RELEASE_VERSION}"
+          git config gitflow.branch.master main
+          git config gitflow.branch.develop develop
+          git config gitflow.prefix.feature feature/
+          git config gitflow.prefix.bugfix bugfix/
+          git config gitflow.prefix.release release/
+          git config gitflow.prefix.hotfix hotfix/
+          git config gitflow.prefix.support support/
+          git config gitflow.prefix.versiontag ""
+          git config gitflow.path.hooks .git/hooks
 
-          auto-changelog -v "${RELEASE_VERSION}"
-          git add CHANGELOG.md
-          if ! git diff --cached --quiet; then
-            git commit -m "${RELEASE_VERSION} hotfix release"
+          hotfix_branch="hotfix/${RELEASE_VERSION}"
+          if git show-ref --verify --quiet "refs/heads/${hotfix_branch}" || git ls-remote --exit-code --heads origin "${hotfix_branch}" >/dev/null 2>&1; then
+            echo "${hotfix_branch} already exists. Skipping hotfix start."
           else
-            echo "No CHANGELOG.md updates to commit."
+            git flow hotfix start "${RELEASE_VERSION}"
+
+            auto-changelog -v "${RELEASE_VERSION}"
+            git add CHANGELOG.md
+            if ! git diff --cached --quiet; then
+              git commit -m "${RELEASE_VERSION} hotfix release"
+            else
+              echo "No CHANGELOG.md updates to commit."
+            fi
+          fi
+
+          if git rev-parse -q --verify "refs/tags/${RELEASE_VERSION}" >/dev/null; then
+            echo "Tag ${RELEASE_VERSION} already exists locally. Skipping hotfix finish."
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_VERSION}" >/dev/null 2>&1; then
+            echo "Tag ${RELEASE_VERSION} already exists on origin. Skipping hotfix finish."
+            exit 0
+          fi
+
+          if git show-ref --verify --quiet "refs/heads/${hotfix_branch}"; then
+            git checkout "${hotfix_branch}"
+          elif git ls-remote --exit-code --heads origin "${hotfix_branch}" >/dev/null 2>&1; then
+            git checkout -b "${hotfix_branch}" "origin/${hotfix_branch}"
+          else
+            echo "${hotfix_branch} does not exist locally or on origin."
+            exit 1
           fi
 
           git flow hotfix finish -m "Hotfix ${RELEASE_VERSION}" "${RELEASE_VERSION}"
