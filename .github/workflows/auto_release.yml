@@ -87,7 +87,7 @@ jobs:
           git fetch --prune origin
           git checkout develop
           git reset --hard origin/develop
-          git flow init -d
+          printf 'main\ndevelop\n\n\n\n\n\n\n' | git flow init -f
           git flow release start "${RELEASE_VERSION}"
 
           auto-changelog -v "${RELEASE_VERSION}"
@@ -160,7 +160,7 @@ jobs:
           git fetch --prune origin
           git checkout main
           git reset --hard origin/main
-          git flow init -d
+          printf 'main\ndevelop\n\n\n\n\n\n\n' | git flow init -f
           git flow hotfix start "${RELEASE_VERSION}"
 
           auto-changelog -v "${RELEASE_VERSION}"
