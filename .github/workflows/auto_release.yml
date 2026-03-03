@@ -106,7 +106,8 @@ jobs:
           set -euo pipefail
           release_branch="release/${RELEASE_VERSION}"
 
-          if ! gh pr view --head "${release_branch}" --base main >/dev/null 2>&1; then
+          main_pr_number=$(gh pr list --head "${release_branch}" --base main --state open --json number -q '.[0].number')
+          if [ -z "${main_pr_number}" ]; then
             gh pr create \
               --base main \
               --head "${release_branch}" \
@@ -116,7 +117,8 @@ jobs:
             echo "PR from ${release_branch} to main already exists."
           fi
 
-          if ! gh pr view --head "${release_branch}" --base develop >/dev/null 2>&1; then
+          develop_pr_number=$(gh pr list --head "${release_branch}" --base develop --state open --json number -q '.[0].number')
+          if [ -z "${develop_pr_number}" ]; then
             gh pr create \
               --base develop \
               --head "${release_branch}" \
@@ -132,8 +134,16 @@ jobs:
           set -euo pipefail
           release_branch="release/${RELEASE_VERSION}"
 
-          main_decision=$(gh pr view --head "${release_branch}" --base main --json reviewDecision -q '.reviewDecision')
-          develop_decision=$(gh pr view --head "${release_branch}" --base develop --json reviewDecision -q '.reviewDecision')
+          main_pr_number=$(gh pr list --head "${release_branch}" --base main --state open --json number -q '.[0].number')
+          develop_pr_number=$(gh pr list --head "${release_branch}" --base develop --state open --json number -q '.[0].number')
+
+          if [ -z "${main_pr_number}" ] || [ -z "${develop_pr_number}" ]; then
+            echo "Release PR(s) not found. Ensure PRs exist and are open before finishing release."
+            exit 1
+          fi
+
+          main_decision=$(gh pr view "${main_pr_number}" --json reviewDecision -q '.reviewDecision')
+          develop_decision=$(gh pr view "${develop_pr_number}" --json reviewDecision -q '.reviewDecision')
 
           echo "Review status main: ${main_decision}"
           echo "Review status develop: ${develop_decision}"
